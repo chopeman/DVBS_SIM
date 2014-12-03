@@ -51,8 +51,7 @@ classdef DVBS_Simulator < handle
             % Filtering
             signal_tx = filter(filt_h, 1, qpsk_symbols_over);
             % Add signals to sink
-            this.simulation.sink.bits_FECenc_in  = bits_tx;
-            this.simulation.sink.bits_FECenc_out = bits_encod;
+            this.simulation.sink.bits_in  = this.simulation.bit_stream_in;
             this.simulation.sink.symbol_tx = qpsk_symbols;
             this.simulation.sink.signal_tx = signal_tx;
             
@@ -92,7 +91,7 @@ classdef DVBS_Simulator < handle
                 bits_decod = this.rs_dec(bits_decod);
             end
             % Add signals to sink
-            this.simulation.sink.bits_FECdec_out = bits_decod;
+            this.simulation.sink.bits_out = bits_decod;
             this.simulation.sink.symbol_rx = qpsk_symbols_hat;
             
         end
@@ -124,6 +123,14 @@ classdef DVBS_Simulator < handle
             b_soft_out = b_soft_out(1:(end-P));
         end
         
+        function output = interleaver(input)
+            % TODO: LO?C
+        end
+        
+        function output = deinterleaver(input)
+            % TODO: LO?C
+        end
+        
         function c_out = qpskMapper(b_in)
             Nb = length(b_in);
             Ns = Nb/2;
@@ -133,7 +140,6 @@ classdef DVBS_Simulator < handle
         
         function b_out = rs_enc(b_in)
             warning('off')
-            
             M = 8;
             S = 51; % Shortening
             t = 8;
