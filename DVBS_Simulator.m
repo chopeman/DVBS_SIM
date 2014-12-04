@@ -22,6 +22,9 @@ classdef DVBS_Simulator < handle
             if this.coding.rs.switch %Reed-Solomon
                 bits_encod = this.rs_enc(bits_encod);
             end
+            if this.coding.interleaving
+                bits_encod = this.interleaver(bits_encod);
+            end            
             if this.coding.conv.switch %Convolutional
                 bits_encod = this.conv_enc( bits_encod, this.coding.conv.trellis );
                 % Puncturing
@@ -87,13 +90,15 @@ classdef DVBS_Simulator < handle
                         bits_decod = vitdec(bits_soft, this.coding.conv.trellis, 4, 'trunc', 'unquant');
                 end
             end
+            if this.coding.interleaving
+                bits_decod = this.deinterleaver(bits_decod);
+            end
             if this.coding.rs.switch
                 bits_decod = this.rs_dec(bits_decod);
             end
             % Add signals to sink
             this.simulation.sink.bits_out = bits_decod;
             this.simulation.sink.symbol_rx = qpsk_symbols_hat;
-            
         end
         
     end
@@ -124,11 +129,43 @@ classdef DVBS_Simulator < handle
         end
         
         function output = interleaver(input)
-            % TODO: LO?C
+            nbits = 8;
+            Ncol = 204;
+            Nrow = 10;
+            R = length(input) / (Ncol * 8 * Nrow);
+            
+            temp_binary   = reshape(input, [], nbits);
+            temp_string = bin2dec(num2str(temp_binary));
+
+            temp = reshape(temp_string, [Ncol * Nrow, R]).';
+            output = nan(Ncol * Nrow, R);
+            for i = 1:R
+                output(:,i) = matintrlv(temp(i,:), Nrow, Ncol).';
+            end
+            
+            output = output(:);
+            output = dec2bin(output, nbits)-'0';
+            output = output(:).';
         end
         
         function output = deinterleaver(input)
-            % TODO: LO?C
+            nbits = 8;
+            Ncol = 204;
+            Nrow = 10;
+            R = length(input) / (Ncol * 8 * Nrow);
+            
+            temp_binary   = reshape(input, [], nbits);
+            temp_string = bin2dec(num2str(temp_binary));
+
+            temp = reshape(temp_string, [Ncol * Nrow, R]).';
+            output = nan(Ncol * Nrow, R);
+            for i = 1:R
+                output(:,i) = matdeintrlv(temp(i,:), Nrow, Ncol).';
+            end
+            
+            output = output(:);
+            output = dec2bin(output, nbits)-'0';
+            output = output(:).';
         end
         
         function c_out = qpskMapper(b_in)
@@ -250,6 +287,8 @@ classdef DVBS_Simulator < handle
             % RS coding off by default...
             this.coding.rs.switch = false;
             this.coding.rs.rate = 1;
+            % Interleaving
+            this.coding.interleaving = false;
             % Initialize bit_stream
             if nargin > 0
                 n_bits = 2*round(varargin{1});
@@ -278,7 +317,7 @@ classdef DVBS_Simulator < handle
             this = this.rx();
             % Calculate BER
             this.simulation.ber = sum(this.simulation.bit_stream_in ~=...
-                this.simulation.sink.bits_FECdec_out) / length(this.simulation.sink.bits_FECdec_out);
+                this.simulation.sink.bits_out) / length(this.simulation.sink.bits_out);
             ber = this.simulation.ber;
         end
         

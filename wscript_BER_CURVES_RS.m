@@ -1,14 +1,17 @@
+%   2014/2015 Juan Pablo Cuadro
+
 close all
 clear
 
-N_SYMBOLS = 5 * 1.504 * 1e4;
+N_SYMBOLS = 4 * 5 * 1.504 * 1e4;
 OVERSAMPLING = 10;
 LABEL_SCENARIOS = {'Theoretical',...
     'Simulated - no FEC',...
     'Simulated - Conv Hard Deco - R = 1/2',...
     'Simulated - Conv Soft Deco - R = 1/2',...
     'Simulated - Conv Punctured - R = 2/3',...
-    'Simulated - No Interleave  - RS'
+    'Simulated - No Interleave  - RS',...
+    'Simulated - Interleaved    - RS'    
     };
 N_SCENARIOS     = numel(LABEL_SCENARIOS);
 
@@ -20,8 +23,6 @@ bers = zeros(N_SCENARIOS, length(EbN0_dB));
 obj = DVBS_Simulator(N_SYMBOLS);
 obj.oversampling = OVERSAMPLING;
 
-%   2014/2015 Juan Pablo Cuadro
-%   2014/2015 Juan Pablo Cuadro
 tic
 bers(1,:) = 0.5*erfc(sqrt(10.^(EbN0_dB/10)));
 for i = 1:length(EbN0_dB)
@@ -55,6 +56,14 @@ for i = 1:length(EbN0_dB)
     obj.coding.rs.switch            = true;
     obj.coding.conv.puncturingFlag  = true;
     bers(6,i) = obj.simulate(EbN0_dB(i));
+    % Interleaving
+    obj.coding.conv.switch          = true;
+    obj.coding.conv.decType         = 'hard';
+    obj.coding.rs.switch            = true;
+    obj.coding.conv.puncturingFlag  = true;
+    obj.coding.interleaving         = true;
+    bers(7,i) = obj.simulate(EbN0_dB(i));
+    obj.coding.interleaving         = false;
     
 end
 toc
@@ -69,6 +78,7 @@ semilogy(EbN0_dB,bers(3,:))
 semilogy(EbN0_dB,bers(4,:))
 semilogy(EbN0_dB,bers(5,:))
 semilogy(EbN0_dB,bers(6,:))
+semilogy(EbN0_dB,bers(7,:))
 
 grid on
 xlabel('E_b/N_0 [dB]')
