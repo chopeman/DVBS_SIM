@@ -2,9 +2,9 @@
 %   2014/2015 Juan Pablo Cuadro and Loic Veillard
 
 close all
-clear all
+clear 
 
-N_SYMBOLS = 4 * 5 * 1.504 * 1e5;
+N_SYMBOLS = 4 * 5 * 1.504 * 1e3;
 LABEL_SCENARIOS = {'Theoretical',...
     'Simulated - no FEC',...
     'Simulated - Conv Hard Deco - R = 1/2',...
@@ -28,8 +28,15 @@ BER(1,:) = 0.5*erfc(sqrt(10.^(EbN0_dB/10)));
 
 % profile on 
 
+fprintf('\nStarting simulation...\n');
+fprintf('Number of bits = %f\n',2*N_SYMBOLS);
+fprintf('Number scenarios = %d\n',N_SCENARIOS);
+fprintf('Number EbN0 points = %d\n\n',length(EbN0_dB));
+
+
+
 tic
-progressbar(0);
+
 loop_counter = 0;
 loop_total = 6 * length(EbN0_dB);
 
@@ -41,34 +48,36 @@ for i = 1:length(EbN0_dB)
     obj.setScenario('nofec');
     BER(2,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     % Hard dec
     obj.setScenario('convh');
     BER(3,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     % Soft dec
     obj.setScenario('convs');
     BER(4,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     % Puncturing!
     obj.setScenario('convp');
     BER(5,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     % Puncturing and RS!
     obj.setScenario('rsit0');
     BER(6,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     % Interleaving
     obj.setScenario('rsit1');
     BER(7,i) = obj.simulate(EbN0_dB(i));
     loop_counter = loop_counter + 1;
-    progressbar(loop_counter/loop_total);
+    progressDisplay(loop_counter,loop_total);
     
 end
+
+fprintf('DONE!\n\n');
 toc
 
 % profile viewer
@@ -97,3 +106,4 @@ legend('Theoretical', LABEL_SCENARIOS)
 % Export figures...
 saveas(h_ber_plot, ['BER_Curves_' num2str(N_SYMBOLS)], 'epsc')
 saveas(h_ber_plot, ['BER_Curves_' num2str(N_SYMBOLS)], 'png')
+
