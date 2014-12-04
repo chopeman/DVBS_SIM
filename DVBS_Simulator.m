@@ -1,29 +1,63 @@
 
 classdef DVBS_Simulator < handle
-    %DVBS_SIMULATOR Simulator class for DVB-S Tx and Rx
-    %   Detailed explanation goes here
+    %   DVBS_SIMULATOR Simulator class for BER calculation
+    %   SCS Master SIMCOM DVB-S Simulator
+    %   SCS 2014/2015 Juan Pablo Cuadro and Loic Veillard
+    %
+    % To set FEC options, class constructor can be used:
+    %
+    %       DVBS_Simulator(scenario_string, number_of_symbols)
+    %
+    % SCENARIO_STRING defines FEC options and it can also be 
+    % set by using the setScenario method any time using the same
+    % initialization string. Possible scenario strings:
+    % 'nofec' : No FEC is used
+    % 'convh' : Convolutional - 1/2 with hard decoding.
+    % 'convs' : Convolutional - 1/2 with soft decoding.
+    % 'convp' : Convolutional - 2/3 with puncturing.
+    % 'rsit0' : RS + Convolutional - x/x with no interleaving.
+    % 'rsit1' : RS + Convolutional - x/x with interleaving.
+    %
+    % NUMBER_OF_SYMBOLS defines the ammount of QPSK symbols transmitted in
+    % the simulation. Bit padding in RS encoder is not implemented so care must be
+    % taken in order to input a multiple of the RS encoder input bit count.
     
-    properties (Access = 'public')
+    properties  (Access = 'public')
         oversampling
         symbol_rate
         tx_filter
         coding
     end
     
-    properties (Access = 'private')
+    properties  (Access = 'public')
         simulation
     end
     
-    methods (Access = 'private')
+    methods     (Access = 'private')
         
+        function this = resetScenario(this)
+            % Convolutional coding on by default...
+            this.coding.conv.switch = false;
+            this.coding.conv.puncturingFlag = false;
+            this.coding.conv.trellis = poly2trellis(7, [171, 133]);
+            this.coding.conv.rate = 0.5;
+            this.coding.conv.decType = 'hard';
+            % RS coding off by default...
+            this.coding.rs.switch = false;
+            this.coding.rs.rate = 188/204;
+            % Interleaving
+            this.coding.interleaver.switch = false;
+            this.coding.interleaver.depth = 10;
+        end
+                
         function this = tx(this)
             % FEC
             bits_encod = this.simulation.bit_stream_in;
             if this.coding.rs.switch %Reed-Solomon
                 bits_encod = this.rs_enc(bits_encod);
             end
-            if this.coding.interleaving
-                bits_encod = this.interleaver(bits_encod);
+            if this.coding.interleaver.switch
+                bits_encod = this.interleaver(bits_encod, this.coding.interleaver.depth);
             end            
             if this.coding.conv.switch %Convolutional
                 bits_encod = this.conv_enc( bits_encod, this.coding.conv.trellis );
@@ -90,8 +124,8 @@ classdef DVBS_Simulator < handle
                         bits_decod = vitdec(bits_soft, this.coding.conv.trellis, 4, 'trunc', 'unquant');
                 end
             end
-            if this.coding.interleaving
-                bits_decod = this.deinterleaver(bits_decod);
+            if this.coding.interleaver.switch
+                bits_decod = this.deinterleaver(bits_decod, this.coding.interleaver.depth);
             end
             if this.coding.rs.switch
                 bits_decod = this.rs_dec(bits_decod);
@@ -128,43 +162,42 @@ classdef DVBS_Simulator < handle
             b_soft_out = b_soft_out(1:(end-P));
         end
         
-        function output = interleaver(input)
+        function output = interleaver(input, block_interleave_depth)
             nbits = 8;
-            Ncol = 204;
-            Nrow = 10;
-            R = length(input) / (Ncol * 8 * Nrow);
-            
-            temp_binary   = reshape(input, [], nbits);
-            temp_string = bin2dec(num2str(temp_binary));
+            rs_codeword_size_symbols = 204;
 
-            temp = reshape(temp_string, [Ncol * Nrow, R]).';
-            output = nan(Ncol * Nrow, R);
-            for i = 1:R
-                output(:,i) = matintrlv(temp(i,:), Nrow, Ncol).';
+            temp_binary = reshape(input, nbits, []).';            
+            temp_decima = temp_binary * (2.^(size(temp_binary,2) - 1:-1:0))';
+            temp_symbol = reshape(temp_decima,...
+                rs_codeword_size_symbols * block_interleave_depth, []);
+            
+            output = nan(size(temp_symbol));
+            for i = 1:size(output,2)
+                output(:,i) = matintrlv(temp_symbol(:,i), ...
+                    block_interleave_depth, rs_codeword_size_symbols);
             end
             
             output = output(:);
-            output = dec2bin(output, nbits)-'0';
+            output = (dec2bin(output, nbits)-'0').';
             output = output(:).';
         end
         
-        function output = deinterleaver(input)
+        function output = deinterleaver(input, block_interleave_depth)
             nbits = 8;
-            Ncol = 204;
-            Nrow = 10;
-            R = length(input) / (Ncol * 8 * Nrow);
-            
-            temp_binary   = reshape(input, [], nbits);
-            temp_string = bin2dec(num2str(temp_binary));
+            rs_codeword_size_symbols = 204;
 
-            temp = reshape(temp_string, [Ncol * Nrow, R]).';
-            output = nan(Ncol * Nrow, R);
-            for i = 1:R
-                output(:,i) = matdeintrlv(temp(i,:), Nrow, Ncol).';
-            end
+            temp_binary = reshape(input, nbits, []).';            
+            temp_decima = temp_binary * (2.^(size(temp_binary,2) - 1:-1:0))';
+            temp_symbol = reshape(temp_decima,...
+                rs_codeword_size_symbols * block_interleave_depth, []);
             
+            output = nan(size(temp_symbol));
+            for i = 1:size(output,2)
+                output(:,i) = matdeintrlv(temp_symbol(:,i), ...
+                    block_interleave_depth, rs_codeword_size_symbols);
+            end
             output = output(:);
-            output = dec2bin(output, nbits)-'0';
+            output = (dec2bin(output, nbits)-'0').';
             output = output(:).';
         end
         
@@ -269,33 +302,81 @@ classdef DVBS_Simulator < handle
         
     end
     
-    
-    % Public methods
-    methods (Access = 'public')
-        function this = DVBS_Simulator(varargin)
+    methods     (Access = 'public')
+        
+        function this = DVBS_Simulator(scenario_string, number_of_symbols)
             % Default values...
             this.oversampling = 10;
             this.symbol_rate = 1e3;
             this.tx_filter.delay = 6;
             this.tx_filter.rolloff = 0.35;
-            % Convolutional coding on by default...
-            this.coding.conv.switch = true;
-            this.coding.conv.puncturingFlag = false;
-            this.coding.conv.trellis = poly2trellis(7, [171, 133]);
-            this.coding.conv.rate = 0.5;
-            this.coding.conv.decType = 'hard';
-            % RS coding off by default...
-            this.coding.rs.switch = false;
-            this.coding.rs.rate = 1;
-            % Interleaving
-            this.coding.interleaving = false;
+            
+            % FEC Options
+            this.setScenario(scenario_string);
+            
             % Initialize bit_stream
-            if nargin > 0
-                n_bits = 2*round(varargin{1});
-            else
-                n_bits = 2*1e3;
-            end
+            n_bits = 2 * number_of_symbols;
             this.simulation.bit_stream_in = round(rand(1,n_bits));
+        end
+        
+        function this = setScenario(this, string)
+            % Possible scenarios:
+            % 'nofec' : No FEC is used
+            % 'convh' : Convolutional - 1/2 with hard decoding.
+            % 'convs' : Convolutional - 1/2 with soft decoding.
+            % 'convp' : Convolutional - 2/3 with puncturing.
+            % 'rsit0' : Reed Solomon enabled and interleaving on.
+            % 'rsit1' : Reed Solomon enabled and interleaving off.
+            
+            this.resetScenario();            
+            
+            switch string
+                case 'nofec'
+                    this.coding.conv.switch = false;
+                    this.coding.conv.puncturingFlag = false;
+                    this.coding.conv.decType = 'hard';
+                    this.coding.rs.switch = false;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
+                case 'convh'
+                    this.coding.conv.switch = true;
+                    this.coding.conv.puncturingFlag = false;
+                    this.coding.conv.decType = 'hard';
+                    this.coding.rs.switch = false;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
+                case 'convs'
+                    this.coding.conv.switch = true;
+                    this.coding.conv.puncturingFlag = false;
+                    this.coding.conv.decType = 'soft';
+                    this.coding.rs.switch = false;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
+                case 'convp'
+                    this.coding.conv.switch = true;
+                    this.coding.conv.puncturingFlag = true;
+                    this.coding.conv.decType = 'soft';
+                    this.coding.rs.switch = false;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
+                case 'rsit0'
+                    this.coding.conv.switch = true;
+                    this.coding.conv.puncturingFlag = true;
+                    this.coding.conv.decType = 'soft';
+                    this.coding.rs.switch = true;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
+                case 'rsit1'
+                    this.coding.conv.switch = true;
+                    this.coding.conv.puncturingFlag = true;
+                    this.coding.conv.decType = 'soft';
+                    this.coding.rs.switch = true;
+                    this.coding.interleaver.switch = true;
+                    this.coding.interleaver.depth = 10;
+                otherwise
+                    error('Scenario not valid check help.');
+            end
+                                
         end
         
         function ber = simulate(this,ebn0_db)
