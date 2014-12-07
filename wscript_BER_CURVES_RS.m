@@ -25,15 +25,12 @@ obj = DVBS_Simulator('nofec', N_SYMBOLS);
 % Theoretical BER
 BER(1,:) = 0.5*erfc(sqrt(10.^(EbN0_dB/10)));
 
-
 % profile on 
 
 fprintf('\nStarting simulation...\n');
-fprintf('Number of bits = %f\n',2*N_SYMBOLS);
+fprintf('Number of bits = %d\n',2*N_SYMBOLS);
 fprintf('Number scenarios = %d\n',N_SCENARIOS);
 fprintf('Number EbN0 points = %d\n\n',length(EbN0_dB));
-
-
 
 tic
 

@@ -133,6 +133,7 @@ classdef DVBS_Simulator < handle
             % Add signals to sink
             this.simulation.sink.bits_out = bits_decod;
             this.simulation.sink.symbol_rx = qpsk_symbols_hat;
+            this.simulation.sink.signal_rx_amf = signal_filt;
         end
         
     end
@@ -402,75 +403,91 @@ classdef DVBS_Simulator < handle
             ber = this.simulation.ber;
         end
         
-        function plotConstellation(this)
+        function figure_handle = plotConstellation(this)
+            ang=0:0.01:2*pi;
+            xp=cos(ang);
+            yp=sin(ang);
+                    
+            
             % Plot
-            figure
+            figure_handle = figure;
             hold all
-            plot(this.simulation.sink.symbol_rx,'.b','MarkerSize',5)
-            plot(this.simulation.sink.symbol_tx, 'or','MarkerSize', 6, 'MarkerFaceColor', 'r')
+            
+            h1 = plot(this.simulation.sink.symbol_rx,'.','MarkerSize',5);
+            plot(xp,yp,':k')
+            h2 = plot(this.simulation.sink.symbol_tx,'ok','MarkerSize', 6);
+            set(h1, 'MarkerFaceColor', get(h1, 'Color'));
+            set(h2, 'MarkerFaceColor', get(h2, 'Color'));
             xlim([-1.5 1.5])
             ylim([-1.5 1.5])
             xlabel('In-phase Amplitude')
             ylabel('Quadrature Amplitude')
             title('QPSK Constellation')
             box on
-            legend('Rx','Tx','Location','EastOutside')
+            legend([h1,h2],'Rx','Tx','Location','EastOutside')
             line([-1.5 1.5],[0 0],'Color','k')
             line([0 0],[-1.5 1.5],'Color','k')
             grid on
             
         end
         
-        function plotSignals(this)
-            Rs   = this.symbol_rate / this.simulation.code_rate;
+        function figure_handle = plotSignals(this)
+            Ts   = 1/(this.symbol_rate / this.simulation.code_rate);
             N_up = this.oversampling;
             signal_tx = this.simulation.sink.signal_tx;
-            signal_rx = this.simulation.sink.signal_rx;
-            timebase = (0:length(signal_tx)-1) * Rs * N_up ;
+            signal_rx = this.simulation.sink.signal_rx_amf;
+            timebase_s = (0:length(signal_tx)-1) * Ts / N_up ;
+            timebase_Ts = timebase_s / Ts;
             % Plot
-            figure
-            h1= subplot(3,1,1);
+            figure_handle = figure;
+            h1= subplot(2,1,1);
             hold all
-            plot(timebase, real(signal_tx), 'b')
-            plot(timebase, real(signal_rx), 'r')
-            xlabel('Time [s]')
+            plot(timebase_Ts, real(signal_tx), 'LineWidth', 2)
+            plot(timebase_Ts, real(signal_rx))
+            xlabel('Time/Ts')
             title('In-Phase Signal Components')
-            h2 = subplot(3,1,2);
+            h2 = subplot(2,1,2);
             hold all
-            plot(timebase, imag(signal_tx), 'b')
-            plot(timebase, imag(signal_rx), 'r')
-            xlabel('Time [s]')
+            plot(timebase_Ts, imag(signal_tx), 'LineWidth', 2)
+            plot(timebase_Ts, imag(signal_rx))
+            xlabel('Time/Ts')
             title('Quadrature Signal Components')
             linkaxes([h1,h2],'xy');
-            xlim([0,timebase(end)])
-            subplot(3,1,3)
-            [psd_tx,F] = pwelch(signal_tx,[],[],[],Rs*N_up,'centered');
-            [psd_rx,~] = pwelch(signal_rx,[],[],[],Rs*N_up,'centered');
-            hold on
-            plot(F, 10*log10(psd_tx),'b')
-            plot(F, 10*log10(psd_rx),'r')
-            title('Power Spectral Density')
-            
+            xlim([0,timebase_Ts(end)])            
         end
         
-        function plotPsd(this)
+        function figure_handle = plotPsd(this)
             Rs   = this.symbol_rate / this.simulation.code_rate;
             N_up = this.oversampling;
             signal_tx = this.simulation.sink.signal_tx;
             signal_rx = this.simulation.sink.signal_rx;
             % Plot
-            figure
-            [psd_tx,F] = pwelch(signal_tx,[],[],[],Rs*N_up/1e3,'centered');
-            [psd_rx,~] = pwelch(signal_rx,[],[],[],Rs*N_up/1e3,'centered');
+            figure_handle = figure;
+            [psd_tx,F] = pwelch(signal_tx,[],[],[],Rs*N_up,'centered');
+            [psd_rx,~] = pwelch(signal_rx,[],[],[],Rs*N_up,'centered');
+            F_norm = F / Rs;
             hold on
-            plot(F, 10*log10(psd_tx),'b')
-            plot(F, 10*log10(psd_rx),'r')
+            plot(F_norm, 10*log10(psd_tx))
+%             plot(F_norm, 10*log10(psd_rx),'r')
             title('Power Spectral Density')
-            xlabel('Frequency [kHz]')
-            ylabel('Power Spectral Density [W/Hz]')
-            legend('Tx','Rx')
+            xlabel('Frequency/Rs [Hz/Baud]')
+            ylabel('Power Spectral Density [dBW/Hz]')
+%             legend('Tx','Rx')
             grid on
             box on
+            xlim([-1,1]);
+        end
+        
+        function figure_handle = plotEyes(this, periods)
+            N_up = this.oversampling;
+            signal_tx = this.simulation.sink.signal_tx;
+            signal_rx = this.simulation.sink.signal_rx_amf;
+            
+            idx = 1:(periods * N_up);
+            % Plot
+            figure_handle = eyediagram(signal_rx(20*N_up + idx), N_up, 1, 0, 'k');
+            figure_handle.Children(1).XLabel = xlabel('Time / Ts');
+            figure_handle.Children(2).XLabel = xlabel('Time / Ts');
         end
         
     end
