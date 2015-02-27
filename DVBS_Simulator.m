@@ -328,6 +328,7 @@ classdef DVBS_Simulator < handle
             % 'convp' : Convolutional - 2/3 with puncturing.
             % 'rsit0' : Reed Solomon enabled and interleaving on.
             % 'rsit1' : Reed Solomon enabled and interleaving off.
+            % 'rsonl' : Reed Solomon enabled and convolutional disabled.
             
             this.resetScenario();            
             
@@ -374,6 +375,13 @@ classdef DVBS_Simulator < handle
                     this.coding.rs.switch = true;
                     this.coding.interleaver.switch = true;
                     this.coding.interleaver.depth = 10;
+                case 'rsonl'
+                    this.coding.conv.switch = false;
+                    this.coding.conv.puncturingFlag = false;
+                    this.coding.conv.decType = 'hard';
+                    this.coding.rs.switch = true;
+                    this.coding.interleaver.switch = false;
+                    this.coding.interleaver.depth = 10;
                 otherwise
                     error('Scenario not valid check help.');
             end
@@ -414,15 +422,15 @@ classdef DVBS_Simulator < handle
             hold all
             
             h1 = plot(this.simulation.sink.symbol_rx,'.','MarkerSize',5);
-            plot(xp,yp,':k')
-            h2 = plot(this.simulation.sink.symbol_tx,'ok','MarkerSize', 6);
+            plot(xp,yp,':')
+            h2 = plot(this.simulation.sink.symbol_tx,'or','MarkerSize', 6);
             set(h1, 'MarkerFaceColor', get(h1, 'Color'));
             set(h2, 'MarkerFaceColor', get(h2, 'Color'));
             xlim([-1.5 1.5])
             ylim([-1.5 1.5])
             xlabel('In-phase Amplitude')
             ylabel('Quadrature Amplitude')
-            title('QPSK Constellation')
+            title('IQ samples')
             box on
             legend([h1,h2],'Rx','Tx','Location','EastOutside')
             line([-1.5 1.5],[0 0],'Color','k')
@@ -470,12 +478,14 @@ classdef DVBS_Simulator < handle
             plot(F_norm, 10*log10(psd_tx))
 %             plot(F_norm, 10*log10(psd_rx),'r')
             title('Power Spectral Density')
-            xlabel('Frequency/Rs [Hz/Baud]')
+            xlabel('Frequency')
             ylabel('Power Spectral Density [dBW/Hz]')
 %             legend('Tx','Rx')
             grid on
             box on
             xlim([-1,1]);
+            set(gca,'XTick',[-1, -0.5, 0, 0.5, 1])
+            set(gca,'XTickLabel',{'-R_s', '-R_s/2', '0', 'R_s/2', 'R_s'})
         end
         
         function figure_handle = plotEyes(this, periods)
