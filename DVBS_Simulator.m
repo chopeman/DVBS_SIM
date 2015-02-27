@@ -1,4 +1,3 @@
-
 classdef DVBS_Simulator < handle
     %   DVBS_SIMULATOR Simulator class for BER calculation
     %   SCS Master SIMCOM DVB-S Simulator
@@ -27,6 +26,7 @@ classdef DVBS_Simulator < handle
         symbol_rate
         tx_filter
         coding
+        dll
     end
     
     properties  (Access = 'public')
@@ -48,6 +48,10 @@ classdef DVBS_Simulator < handle
             % Interleaving
             this.coding.interleaver.switch = false;
             this.coding.interleaver.depth = 10;
+            this.dll.flag  = false;
+            this.dll.order = 1;
+            this.dll.d_phi_deg = 0;
+            this.dll.BlT_dB = -3;
         end
                 
         function this = tx(this)
@@ -90,8 +94,12 @@ classdef DVBS_Simulator < handle
             % Add signals to sink
             this.simulation.sink.bits_in  = this.simulation.bit_stream_in;
             this.simulation.sink.symbol_tx = qpsk_symbols;
+            this.simulation.sink.symbol_tx_over = qpsk_symbols_over;
             this.simulation.sink.signal_tx = signal_tx;
-            
+            % DLL Init
+            if this.dll.flag
+                this.dll.pente = this.dll_pre(this.simulation.sink.symbol_tx_over,filt_h,this.oversampling);
+            end
         end
         
         function this = ch(this,ebn0_db)
@@ -102,11 +110,19 @@ classdef DVBS_Simulator < handle
             this.simulation.sink.signal_rx = signal_in + noise;
         end
         
-        function this = rx(this)
+        function this = rx(this)           
             % Matched filter
             signal_filt = filter(conj(fliplr(this.tx_filter.h)), 1, this.simulation.sink.signal_rx);
             % Sampling
             qpsk_symbols_hat = signal_filt(1:this.oversampling:end);
+            % DLL
+            if this.dll.flag
+                [qpsk_symbols_hat, this.dll.debug] = this.dll_lock(...
+                    qpsk_symbols_hat,...
+                    this.dll.pente,...
+                    this.dll.BlT_dB);
+            end
+            
             % Delay Compensation
             qpsk_symbols_hat = qpsk_symbols_hat((1+2*this.tx_filter.delay):end);
             bits_soft = reshape([real(qpsk_symbols_hat); imag(qpsk_symbols_hat)], 1, 2 * length(qpsk_symbols_hat));
@@ -139,6 +155,54 @@ classdef DVBS_Simulator < handle
     end
     
     methods(Static)
+        
+        function pente = dll_pre(input,h,oversampling)
+            d_phi_deg=[-3:3];
+            for jj=1:length(d_phi_deg)  % boucle sur erreur de phase
+                d_phi=d_phi_deg(jj)*pi/180+2*pi;
+                input_dp=input.*exp(1i*d_phi);
+                filtered = filter(h, 1, input_dp);
+                decimate = filtered(1:oversampling:end);
+                out_det = -imag(decimate.^4);
+                S_curve(jj)=mean(out_det); 
+            end
+            pente=S_curve((length(S_curve)+1)/2+3)-S_curve((length(S_curve)+1)/2-3);
+            pente=pente/(6*(d_phi_deg(2)-d_phi_deg(1))*pi/180);            
+        end
+        
+        function [out, debug] = dll_lock(qpsk_symbols_hat, pente, BlT_dB)
+                % Initialize DLL registers
+                BlTT=10.^(BlT_dB);
+                order = 1;
+                if order==2
+                    zeta=sqrt(2)/2;
+                    A=16*zeta^2*BlTT.*(1+4*zeta^2-4*BlTT)/(1+4*zeta^2)./(1+4*zeta^2-8*zeta^2*BlTT);
+                    B=64*zeta^2*BlTT.^2/(1+4*zeta^2)./(1+4*zeta^2-8*zeta^2*BlTT);
+                elseif order==1
+                    B=0*BlTT;
+                    A=4*BlTT;
+                end
+                
+                A=A/pente;
+                B=B/pente;
+                NCO_mem=0;      % initialisation NCO
+                filtre_mem=0;   % initialisation de la memoire du filtre
+                phi_est(1)=0;  % phase estimee : valeur initiale
+                % DLL
+                for ii=1:length(qpsk_symbols_hat)
+                    out_det(ii)= -imag( (qpsk_symbols_hat(ii) * exp(-1i*phi_est(ii) )).^4 );
+                    % filtre de boucle
+                    w(ii)=filtre_mem+out_det(ii); % memoire filtre + sortie detecteur
+                    filtre_mem=w(ii);
+                    out_filtre=A*out_det(ii)+B*w(ii);   % sortie du filtre a l'instant ii :  F(z)=A+B/(1-z^-1)
+                    %NCO
+                    phi_est(ii+1)=(out_filtre+NCO_mem); % N(z)=1/(z-1)
+                    NCO_mem=phi_est(ii+1);
+                end
+                out = qpsk_symbols_hat .* exp(-1i*phi_est(2:end));
+                
+                debug.phi_est = phi_est;
+        end
         
         function [b_out] = conv_enc( b_in, trellis )
             b_out = convenc( b_in, trellis );
